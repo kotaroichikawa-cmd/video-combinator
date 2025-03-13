@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Hook Maker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Video Hook Maker</h1>
+        <p class="description">
+            Create video combinations by selecting hook videos, Bodies, and optional CTA.
+        </p>
+        
+        <div class="hero-image">
+            <img src="{{ url_for('static', filename='hero.png') }}" alt="Video Hook Maker Hero Image">
+        </div>
+
+        <form id="upload-form" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="hooks">
+                    <strong>Hook Videos</strong> (Required)
+                    <span class="help-text">Select one or more hook videos to start your videos</span>
+                </label>
+                <input type="file" id="hooks" name="hooks" accept="video/*" multiple required>
+                <div class="selected-files" id="hooks-files">No files selected</div>
+            </div>
+
+            <div class="form-group">
+                <label for="middle_cta">
+                    <strong>Body Videos</strong> (Required)
+                    <span class="help-text">Select one or more Bodies</span>
+                </label>
+                <input type="file" id="middle_cta" name="middle_cta" accept="video/*" multiple required>
+                <div class="selected-files" id="middle-files">No files selected</div>
+            </div>
+
+            <div class="form-group">
+                <label for="end_cta">
+                    <strong>CTA Videos</strong> (Optional)
+                    <span class="help-text">Select one or more CTA videos</span>
+                </label>
+                <input type="file" id="end_cta" name="end_cta" accept="video/*" multiple>
+                <div class="selected-files" id="end-files">No files selected</div>
+            </div>
+
+            <div class="form-group">
+                <label for="bg_music">
+                    <strong>Background Music</strong> (Optional)
+                    <span class="help-text">Select one or more audio files for background music</span>
+                </label>
+                <input type="file" id="bg_music" name="bg_music" accept="audio/*" multiple>
+                <div class="selected-files" id="music-files">No files selected</div>
+            </div>
+
+            <div class="form-group">
+                <label for="music_volume">
+                    <strong>Background Music Volume</strong>
+                    <span class="help-text">Set the volume of the background music (0-100%)</span>
+                </label>
+                <input type="range" id="music_volume" name="music_volume" min="0" max="1" step="0.1" value="0.3">
+                <span id="volume-display">30%</span>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" id="submit-btn">Create Videos</button>
+            </div>
+        </form>
+
+        <div id="progress-container" style="display: none;">
+            <h2>Processing Videos</h2>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <div class="progress-text">
+                <span id="progress-percentage">0%</span>
+                <span id="progress-status">Starting...</span>
+            </div>
+        </div>
+
+        <div id="results-container" style="display: none;">
+            <h2>Completed Videos</h2>
+            <p>The following videos have been created:</p>
+            <ul id="results-list"></ul>
+            <div class="button-group">
+                <button id="download-all-btn">Download All (ZIP)</button>
+                <button id="create-more-btn">Create More Videos</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
