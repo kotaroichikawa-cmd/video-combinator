@@ -1,85 +1,83 @@
-# Video Hook Maker
+# Video Combinator
 
-A Python web application that allows you to combine multiple video files to create all possible variations. This tool is designed to help create marketing videos by combining videos.
+A web-based application that allows users to create multiple video combinations by mixing hook videos, body videos, CTAs, and background music.
 
 ## Features
 
-- Upload multiple hook videos (required)
-- Upload multiple Body videos (required)
-- Upload optional CTA videos
-- Upload optional background music
-- Adjust background music volume
+- Upload and combine multiple video files
+- Add optional CTA videos to all combinations
+- Add optional background music with adjustable volume
 - Real-time progress tracking
-- Download individual or all generated videos
+- Download individual videos or all videos as a ZIP file
+- Automatic cleanup of input files to save disk space
 
 ## Requirements
 
-- Python 3.7 or higher
-- Web browser (Chrome, Firefox, Edge, etc.)
+- Python 3.7+
+- Flask
+- MoviePy
+- Werkzeug
 
 ## Installation
 
-1. Download or clone this repository to your local machine.
+1. Clone the repository:
+   ```
+   git clone https://github.com/tap1on/video-combinator.git
+   cd video-combinator
+   ```
 
-2. Install the required Python packages:
+2. Install the required packages:
+   ```
+   pip install -r requirements.txt
+   ```
 
-```bash
-pip install -r requirements.txt
-```
+3. Create the necessary directories (if they don't exist):
+   ```
+   mkdir -p uploads output
+   ```
 
 ## Usage
 
 1. Start the application:
-
-```bash
-python app.py
-```
+   ```
+   python app.py
+   ```
 
 2. Open your web browser and navigate to:
+   ```
+   http://localhost:5000
+   ```
 
-```
-http://localhost:5000
-```
+3. Upload your videos:
+   - **Hook Videos** (Required): These will be the beginning of each video
+   - **Body Videos** (Required): These will be the middle part of each video
+   - **CTA Videos** (Optional): These will be added to the end of each video
+   - **Background Music** (Optional): This will be added to the videos
 
-3. Use the web interface to:
-   - Select hook videos (required)
-   - Select body videos (required)
-   - Optionally select CTA videos
-   - Optionally select background music
-   - Adjust background music volume
-   - Click "Create Videos" to start processing
+4. Adjust the background music volume if needed
 
-4. Wait for the processing to complete. The application will show a progress bar.
+5. Click "Create Videos" to start processing
 
-5. Once processing is complete, you can download individual videos or all videos at once.
+6. Once processing is complete, you can:
+   - Download individual videos by clicking on their names
+   - Download all videos as a ZIP file
+   - Create more videos by clicking the "Create More Videos" button
 
 ## How It Works
 
-The application creates all possible combinations of the selected videos:
+The application creates all possible combinations of the uploaded videos:
+- Each hook video is combined with each body video
+- If CTA videos are provided, they are added to all combinations
+- If background music is provided, versions with and without music are created
 
-1. Each hook video will be combined with each body video.
-2. If CTA videos are provided, each combination will also include each CTA video.
-3. If background music is provided, each combination will also include each background music track (plus a version without any music).
-
-For example:
+For example, if you upload:
 - 2 hook videos
-- 3 body videos
+- 2 body videos
 - 1 CTA video
-- 1 background music track
+- 1 background music file
 
-This would create: 2 × 3 × (1+1) × (1+1) = 24 different video combinations.
+The application will create 8 different videos (2 hooks × 2 bodies × 1 CTA × 2 music options).
 
-## File Structure
+## License
 
-- `app.py`: Main Python application
-- `templates/index.html`: HTML template for the web interface
-- `static/style.css`: CSS styles for the web interface
-- `static/script.js`: JavaScript for client-side functionality
-- `uploads/`: Directory where uploaded files are stored
-- `output/`: Directory where generated videos are stored
-
-## Notes
-
-- Large video files may take a long time to process
-- The application creates temporary directories for each job
-- All generated videos are saved in MP4 format with H.264 encoding
+MIT
