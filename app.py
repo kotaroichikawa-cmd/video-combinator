@@ -290,8 +290,11 @@ def process_videos_background(job_id, hook_paths, middle_cta_paths, end_cta_path
             output_filename = f"{hook_name}_{middle_name}_{end_name}_{music_name}.mp4"
             output_path = os.path.join(job_output_dir, output_filename)
             
-            # Write the final video
-            final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
+            # Write the final video (preserve full color range for smartphone videos)
+            final_clip.write_videofile(
+                output_path, codec='libx264', audio_codec='aac',
+                ffmpeg_params=['-pix_fmt', 'yuvj420p']
+            )
             
             # Close clips to free memory
             hook_clip.close()
