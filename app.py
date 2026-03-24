@@ -1,17 +1,21 @@
 import os
 import time
+import shutil
 import itertools
 import urllib.parse
 import zipfile
 import io
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 from werkzeug.utils import secure_filename
-from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips, CompositeAudioClip
+from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips, concatenate_audioclips, CompositeAudioClip
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'output'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB max upload size
+
+# Max age for old job files (1 hour)
+MAX_JOB_AGE_SECONDS = 3600
 
 # Ensure upload and output directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -30,8 +34,54 @@ def allowed_audio_file(filename):
 def index():
     return render_template('index.html')
 
+def cleanup_old_jobs():
+    """Remove output directories and upload files from old jobs to free disk space."""
+    now = time.time()
+    cleaned_jobs = []
+
+    # Clean old output directories
+    output_folder = app.config['OUTPUT_FOLDER']
+    if os.path.exists(output_folder):
+        for job_id in os.listdir(output_folder):
+            job_dir = os.path.join(output_folder, job_id)
+            if os.path.isdir(job_dir):
+                try:
+                    dir_age = now - os.path.getmtime(job_dir)
+                    if dir_age > MAX_JOB_AGE_SECONDS:
+                        shutil.rmtree(job_dir, ignore_errors=True)
+                        cleaned_jobs.append(job_id)
+                except OSError:
+                    pass
+
+    # Clean old upload files
+    upload_folder = app.config['UPLOAD_FOLDER']
+    if os.path.exists(upload_folder):
+        for filename in os.listdir(upload_folder):
+            filepath = os.path.join(upload_folder, filename)
+            try:
+                file_age = now - os.path.getmtime(filepath)
+                if file_age > MAX_JOB_AGE_SECONDS:
+                    os.remove(filepath)
+            except OSError:
+                pass
+
+    # Purge stale entries from job_progress dict
+    stale_ids = [
+        jid for jid, jdata in job_progress.items()
+        if jdata.get('status') in ('complete', 'error') and jid in cleaned_jobs
+    ]
+    for jid in stale_ids:
+        del job_progress[jid]
+
+    if cleaned_jobs:
+        print(f"Cleanup: removed {len(cleaned_jobs)} old job(s)")
+
+
 @app.route('/upload', methods=['POST'])
 def upload_files():
+    # Auto-cleanup old files before accepting new upload
+    cleanup_old_jobs()
+
     # Check if the required files are present
     if 'hooks' not in request.files or 'middle_cta' not in request.files:
         return jsonify({'error': 'Hook videos and Body videos are required'}), 400
@@ -194,116 +244,86 @@ def process_videos(job_id):
 def process_videos_background(job_id, hook_paths, middle_cta_paths, end_cta_paths, bg_music_paths, music_volume):
     """Process videos in the background and update progress"""
     job_output_dir = os.path.join(app.config['OUTPUT_FOLDER'], job_id)
-    
+
     # Collect all input files for cleanup later
-    all_input_files = []
-    all_input_files.extend(hook_paths)
-    all_input_files.extend(middle_cta_paths)
+    all_input_files = list(hook_paths) + list(middle_cta_paths)
     if end_cta_paths:
         all_input_files.extend(end_cta_paths)
     if bg_music_paths:
         all_input_files.extend(bg_music_paths)
-    
-    # Store input files in job progress for cleanup
     job_progress[job_id]['input_files'] = all_input_files
-    
-    # Print debug info for each file path
-    for path in hook_paths:
-        print(f"Processing hook video: {path}")
-        if not os.path.exists(path):
-            print(f"WARNING: File does not exist: {path}")
-    
-    for path in middle_cta_paths:
-        print(f"Processing middle video: {path}")
-        if not os.path.exists(path):
-            print(f"WARNING: File does not exist: {path}")
-    
-    if end_cta_paths:
-        for path in end_cta_paths:
-            print(f"Processing end CTA video: {path}")
-            if not os.path.exists(path):
-                print(f"WARNING: File does not exist: {path}")
-    
-    if bg_music_paths:
-        for path in bg_music_paths:
-            print(f"Processing background music: {path}")
-            if not os.path.exists(path):
-                print(f"WARNING: File does not exist: {path}")
-    
+
     # Generate all combinations
-    # If end CTA videos are provided, always include them (no None option)
-    # Otherwise, use None (no end CTA)
     end_cta_options = end_cta_paths if end_cta_paths else [None]
     bg_music_options = bg_music_paths + [None] if bg_music_paths else [None]
-    
+
     processed_count = 0
     output_files = []
-    
+
     try:
         for hook_path, middle_path, end_path, music_path in itertools.product(
                 hook_paths, middle_cta_paths, end_cta_options, bg_music_options):
-            
-            # Update progress
+
             processed_count += 1
             progress = int((processed_count / job_progress[job_id]['total']) * 100)
-            
-            # Create video clips
-            hook_clip = VideoFileClip(hook_path)
-            middle_clip = VideoFileClip(middle_path)
-            
-            # Prepare clips list
-            clips = [hook_clip, middle_clip]
-            
-            # Add end CTA if provided
-            if end_path:
-                end_clip = VideoFileClip(end_path)
-                clips.append(end_clip)
-            
-            # Concatenate video clips
-            final_clip = concatenate_videoclips(clips)
-            
-            # Add background music if provided
-            if music_path:
-                # Load audio and loop it if needed to match video duration
-                bg_audio = AudioFileClip(music_path)
-                if bg_audio.duration < final_clip.duration:
-                    # Loop the audio to match video length
-                    repeats = int(final_clip.duration / bg_audio.duration) + 1
-                    bg_audio = concatenate_videoclips([bg_audio] * repeats).subclip(0, final_clip.duration)
-                else:
-                    # Trim audio to match video length
-                    bg_audio = bg_audio.subclip(0, final_clip.duration)
-                
-                # Set volume
-                bg_audio = bg_audio.volumex(music_volume)
-                
-                # Combine original audio with background music
-                final_audio = CompositeAudioClip([final_clip.audio, bg_audio])
-                final_clip = final_clip.set_audio(final_audio)
-            
-            # Generate output filename
-            hook_name = os.path.basename(hook_path).rsplit('.', 1)[0]
-            middle_name = os.path.basename(middle_path).rsplit('.', 1)[0]
-            end_name = os.path.basename(end_path).rsplit('.', 1)[0] if end_path else "no-end"
-            music_name = os.path.basename(music_path).rsplit('.', 1)[0] if music_path else "no-music"
-            
-            output_filename = f"{hook_name}_{middle_name}_{end_name}_{music_name}.mp4"
-            output_path = os.path.join(job_output_dir, output_filename)
-            
-            # Write the final video
-            final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
-            
-            # Close clips to free memory
-            hook_clip.close()
-            middle_clip.close()
-            if end_path:
-                end_clip.close()
-            final_clip.close()
-            
-            # Add to output files list
-            output_files.append(output_filename)
-            
-            # Update job progress
+
+            hook_clip = None
+            middle_clip = None
+            end_clip = None
+            final_clip = None
+
+            try:
+                hook_clip = VideoFileClip(hook_path)
+                middle_clip = VideoFileClip(middle_path)
+                clips = [hook_clip, middle_clip]
+
+                if end_path:
+                    end_clip = VideoFileClip(end_path)
+                    clips.append(end_clip)
+
+                final_clip = concatenate_videoclips(clips)
+
+                # Add background music if provided
+                if music_path:
+                    bg_audio = AudioFileClip(music_path)
+                    if bg_audio.duration < final_clip.duration:
+                        repeats = int(final_clip.duration / bg_audio.duration) + 1
+                        bg_audio = concatenate_audioclips([bg_audio] * repeats).subclip(0, final_clip.duration)
+                    else:
+                        bg_audio = bg_audio.subclip(0, final_clip.duration)
+
+                    bg_audio = bg_audio.volumex(music_volume)
+
+                    if final_clip.audio is not None:
+                        final_audio = CompositeAudioClip([final_clip.audio, bg_audio])
+                    else:
+                        final_audio = bg_audio
+                    final_clip = final_clip.set_audio(final_audio)
+
+                # Generate output filename
+                hook_name = os.path.basename(hook_path).rsplit('.', 1)[0]
+                middle_name = os.path.basename(middle_path).rsplit('.', 1)[0]
+                end_name = os.path.basename(end_path).rsplit('.', 1)[0] if end_path else "no-end"
+                music_name = os.path.basename(music_path).rsplit('.', 1)[0] if music_path else "no-music"
+
+                output_filename = f"{hook_name}_{middle_name}_{end_name}_{music_name}.mp4"
+                output_path = os.path.join(job_output_dir, output_filename)
+
+                final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
+                output_files.append(output_filename)
+
+            except Exception as clip_err:
+                print(f"Error processing combination {processed_count}: {clip_err}")
+                job_progress[job_id]['last_error'] = str(clip_err)
+
+            finally:
+                for c in [final_clip, end_clip, middle_clip, hook_clip]:
+                    if c is not None:
+                        try:
+                            c.close()
+                        except Exception:
+                            pass
+
             job_progress[job_id].update({
                 'progress': progress,
                 'current': processed_count,
@@ -311,16 +331,20 @@ def process_videos_background(job_id, hook_paths, middle_cta_paths, end_cta_path
                 'status': 'processing' if progress < 100 else 'complete',
                 'output_files': output_files
             })
-        
-        # Mark job as complete
-        job_progress[job_id]['status'] = 'complete'
-        job_progress[job_id]['progress'] = 100
-        
+
+        # Mark job as complete (even if some combinations failed)
+        if output_files:
+            job_progress[job_id]['status'] = 'complete'
+            job_progress[job_id]['progress'] = 100
+        else:
+            job_progress[job_id]['status'] = 'error'
+            job_progress[job_id]['error'] = job_progress[job_id].get(
+                'last_error', 'All combinations failed')
+
         # Clean up input files
         cleanup_input_files(job_id)
-        
+
     except Exception as e:
-        # Handle errors
         job_progress[job_id]['status'] = 'error'
         job_progress[job_id]['error'] = str(e)
         print(f"Error processing videos: {e}")
